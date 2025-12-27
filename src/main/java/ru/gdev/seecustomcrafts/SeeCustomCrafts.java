@@ -11,7 +11,10 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
-import org.bukkit.inventory.*;
+import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.RecipeChoice;
+import org.bukkit.inventory.ShapedRecipe;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.metadata.FixedMetadataValue;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -23,12 +26,7 @@ import java.util.*;
 public class SeeCustomCrafts extends JavaPlugin implements Listener {
 
     private final Map<String, ItemStack[]> recipeCache = new HashMap<>();
-
-    private final int[] inputSlots = {
-            10, 11, 12,
-            19, 20, 21,
-            28, 29, 30
-    };
+    private final int[] inputSlots = {10, 11, 12, 19, 20, 21, 28, 29, 30};
     private final int resultSlot = 24;
     private final int saveSlot = 38;
     private final int cancelSlot = 42;
@@ -48,7 +46,15 @@ public class SeeCustomCrafts extends JavaPlugin implements Listener {
             YamlConfiguration yml = YamlConfiguration.loadConfiguration(file);
             List<?> list = yml.getList("items");
             if (list != null && list.size() == 10) {
-                ItemStack[] items = list.toArray(new ItemStack[0]);
+                ItemStack[] items = new ItemStack[10];
+                for (int i = 0; i < 10; i++) {
+                    Object obj = list.get(i);
+                    if (obj instanceof ItemStack) {
+                        items[i] = (ItemStack) obj;
+                    } else {
+                        items[i] = null;
+                    }
+                }
                 String id = file.getName().replace(".yml", "");
                 recipeCache.put(id, items);
                 registerRecipe(id, items);
@@ -57,28 +63,24 @@ public class SeeCustomCrafts extends JavaPlugin implements Listener {
     }
 
     private void registerRecipe(String id, ItemStack[] items) {
+        if (Bukkit.getRecipe(new NamespacedKey(this, id)) != null) {
+            Bukkit.removeRecipe(new NamespacedKey(this, id));
+        }
+
         ItemStack result = items[9];
         if (result == null || result.getType() == Material.AIR) return;
 
         ShapedRecipe recipe = new ShapedRecipe(new NamespacedKey(this, id), result.clone());
         recipe.shape("ABC", "DEF", "GHI");
         char[] keys = "ABCDEFGHI".toCharArray();
-        Map<Character, ItemStack> map = new HashMap<>();
+
         for (int i = 0; i < 9; i++) {
             ItemStack item = items[i];
+            char key = keys[i];
             if (item != null && item.getType() != Material.AIR) {
-                map.put(keys[i], item.clone());
+                recipe.setIngredient(key, new RecipeChoice.ExactChoice(item.clone()));
             } else {
-                map.put(keys[i], null);
-            }
-        }
-
-        for (char c : keys) {
-            ItemStack i = map.get(c);
-            if (i != null && i.getType() != Material.AIR) {
-                recipe.setIngredient(c, new RecipeChoice.ExactChoice(i));
-            } else {
-                recipe.setIngredient(c, Material.AIR);
+                recipe.setIngredient(key, Material.AIR);
             }
         }
 
@@ -100,7 +102,6 @@ public class SeeCustomCrafts extends JavaPlugin implements Listener {
         }
 
         for (int i = 0; i < 54; i++) gui.setItem(i, background);
-
         for (int slot : inputSlots) gui.setItem(slot, null);
         gui.setItem(resultSlot, null);
 
@@ -123,10 +124,10 @@ public class SeeCustomCrafts extends JavaPlugin implements Listener {
 
         if (edit && recipeCache.containsKey(id)) {
             ItemStack[] items = recipeCache.get(id);
-            for (int i = 0; i < Math.min(items.length, inputSlots.length); i++) {
+            for (int i = 0; i < 9; i++) {
                 gui.setItem(inputSlots[i], items[i]);
             }
-            if (items.length > 9) gui.setItem(resultSlot, items[9]);
+            gui.setItem(resultSlot, items[9]);
         }
 
         player.openInventory(gui);
@@ -138,16 +139,18 @@ public class SeeCustomCrafts extends JavaPlugin implements Listener {
         String id = player.getMetadata("craft-id").get(0).asString();
         File file = new File(getDataFolder(), "recipes/" + id + ".yml");
 
-        List<ItemStack> items = new ArrayList<>();
-        for (int slot : inputSlots) items.add(inv.getItem(slot));
-        items.add(inv.getItem(resultSlot));
+        ItemStack[] items = new ItemStack[10];
+        for (int i = 0; i < 9; i++) {
+            items[i] = inv.getItem(inputSlots[i]);
+        }
+        items[9] = inv.getItem(resultSlot);
 
         YamlConfiguration yml = new YamlConfiguration();
-        yml.set("items", items);
+        yml.set("items", Arrays.asList(items));
         try {
             yml.save(file);
-            recipeCache.put(id, items.toArray(new ItemStack[0]));
-            registerRecipe(id, items.toArray(new ItemStack[0]));
+            recipeCache.put(id, items);
+            registerRecipe(id, items);
             player.sendMessage("§aРецепт '" + id + "' успешно сохранён и зарегистрирован.");
         } catch (IOException e) {
             player.sendMessage("§cОшибка при сохранении рецепта.");
@@ -213,12 +216,16 @@ public class SeeCustomCrafts extends JavaPlugin implements Listener {
                 if (file.exists()) {
                     file.delete();
                     recipeCache.remove(args[1]);
+                    Bukkit.removeRecipe(new NamespacedKey(this, args[1]));
                     player.sendMessage("§cРецепт '" + args[1] + "' удалён.");
                 } else {
                     player.sendMessage("§cРецепт не найден.");
                 }
                 break;
             case "reload":
+                for (String key : recipeCache.keySet()) {
+                    Bukkit.removeRecipe(new NamespacedKey(this, key));
+                }
                 reloadConfig();
                 loadRecipes();
                 player.sendMessage("§aКонфигурация и рецепты перезагружены.");

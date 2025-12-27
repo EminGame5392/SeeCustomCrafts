@@ -1,8 +1,7 @@
 name: SeeCustomCrafts
-version: '${project.version}'
+version: '1.0'
 main: ru.gdev.seecustomcrafts.SeeCustomCrafts
 api-version: '1.16'
-depend: [ProtocolLib]
 authors: [GDev]
 website: https://gdev.seemine.su
 commands:
